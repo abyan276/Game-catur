@@ -12,7 +12,7 @@ h1{font-size:24px;margin:0}.panel{background:var(--panel);border:1px solid #333;
 button,select{font:inherit;color:var(--text);background:#292929;border:1px solid #444;border-radius:10px;padding:10px 13px;cursor:pointer}
 button:hover{filter:brightness(1.12)}button.active{outline:2px solid var(--accent)}
 .modes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.mode{font-size:14px}
-.board{width:min(94vw,600px);aspect-ratio:1;margin:auto;display:grid;grid-template-columns:repeat(8,1fr);border:4px solid #333;border-radius:13px;overflow:hidden;box-shadow:0 10px 30px #0008}
+.board{width:min(98vw,720px);aspect-ratio:1;margin:auto;display:grid;grid-template-columns:repeat(8,1fr);border:4px solid #333;border-radius:13px;overflow:hidden;box-shadow:0 10px 30px #0008}
 .sq{position:relative;display:flex;align-items:center;justify-content:center;border:0;border-radius:0;padding:0;font-size:clamp(28px,8vw,62px);line-height:1;touch-action:manipulation}
 .light{background:var(--light)}.dark{background:var(--dark)}
 .piece{font-family:"Segoe UI Symbol","Noto Sans Symbols 2",serif;z-index:2;filter:drop-shadow(1px 2px 1px #0008)}
@@ -24,7 +24,7 @@ button:hover{filter:brightness(1.12)}button.active{outline:2px solid var(--accen
 @keyframes move{0%{opacity:.1;transform:scale(.7) translateY(-12px)}60%{transform:scale(1.08) translateY(2px)}100%{opacity:1;transform:scale(1) translateY(0)}}
 @keyframes flash{50%{filter:brightness(1.35)}}
 .info{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}.thinking{display:inline-flex;gap:4px}.thinking i{width:6px;height:6px;background:currentColor;border-radius:50%;animation:b .7s infinite alternate}.thinking i:nth-child(2){animation-delay:.15s}.thinking i:nth-child(3){animation-delay:.3s}@keyframes b{to{transform:translateY(-4px);opacity:.3}}
-.clock{font-variant-numeric:tabular-nums;font-weight:800}.files{width:min(94vw,600px);margin:5px auto 0;display:grid;grid-template-columns:repeat(8,1fr);text-align:center;color:var(--muted);font-size:12px}
+.clock{font-variant-numeric:tabular-nums;font-weight:800}.files{width:min(98vw,720px);margin:5px auto 0;display:grid;grid-template-columns:repeat(8,1fr);text-align:center;color:var(--muted);font-size:12px}
 @media(max-width:480px){.modes{grid-template-columns:repeat(2,1fr)}body{padding:10px}}
 </style>
 </head>
@@ -153,7 +153,7 @@ function render(){
 }
 function fmt(n){n=Math.max(0,Math.ceil(n));return String(Math.floor(n/60)).padStart(2,"0")+":"+String(n%60).padStart(2,"0")}
 function updateLabels(){W.textContent=mode==="2p"?"Pemain 1":mode==="bvb"?"Bot":"Kamu";BL.textContent=mode==="2p"?"Pemain 2":"Bot"}
-function setMode(m){mode=m;clearInterval(timerID);timerID=null;document.querySelectorAll(".mode").forEach(x=>x.classList.toggle("active",x.dataset.mode===m));updateLabels();startBoard(m==="random");if(m==="time"){timerID=setInterval(()=>{if(paused||over)return;timers[turn]-=.1;if(timers[turn]<=0){timers[turn]=0;over=true;S.textContent=`⏰ Waktu habis — ${turn==="w"?"Hitam":"Putih"} menang!`}render()},100);}}
+function setMode(m){mode=m;clearInterval(timerID);timerID=null;document.querySelectorAll(".mode").forEach(x=>x.classList.toggle("active",x.dataset.mode===m));updateLabels();startBoard(m==="random");if(m==="bvb")setTimeout(botMove,300);if(m==="time"){timerID=setInterval(()=>{if(paused||over)return;timers[turn]-=.1;if(timers[turn]<=0){timers[turn]=0;over=true;S.textContent=`⏰ Waktu habis — ${turn==="w"?"Hitam":"Putih"} menang!`}render()},100);}}
 document.querySelectorAll(".mode").forEach(x=>x.onclick=()=>setMode(x.dataset.mode));
 reset.onclick=()=>startBoard(mode==="random");
 undo.onclick=()=>{if(history.length&&!busy){restore(history.pop());}};
