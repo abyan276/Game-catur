@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Catur — Multi Mode</title>
+<style>
+:root{--light:#f0d9b5;--dark:#b58863;--bg:#111;--panel:#1d1d1d;--text:#eee;--muted:#aaa;--accent:#d6b656;--check:#c96b6b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial,sans-serif;padding:18px}
+.app{max-width:720px;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+h1{font-size:24px;margin:0}.panel{background:var(--panel);border:1px solid #333;border-radius:14px;padding:12px;margin:12px 0}
+button,select{font:inherit;color:var(--text);background:#292929;border:1px solid #444;border-radius:10px;padding:10px 13px;cursor:pointer}
+button:hover{filter:brightness(1.12)}button.active{outline:2px solid var(--accent)}
+.modes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.mode{font-size:14px}
+.board{width:min(94vw,600px);aspect-ratio:1;margin:auto;display:grid;grid-template-columns:repeat(8,1fr);border:4px solid #333;border-radius:13px;overflow:hidden;box-shadow:0 10px 30px #0008}
+.sq{position:relative;display:flex;align-items:center;justify-content:center;border:0;border-radius:0;padding:0;font-size:clamp(28px,8vw,62px);line-height:1;touch-action:manipulation}
+.light{background:var(--light)}.dark{background:var(--dark)}
+.piece{font-family:"Segoe UI Symbol","Noto Sans Symbols 2",serif;z-index:2;filter:drop-shadow(1px 2px 1px #0008)}
+.white{color:#fff;text-shadow:0 2px 2px #222}.black{color:#111;text-shadow:0 1px 1px #fff6}
+.selected{box-shadow:inset 0 0 0 5px var(--accent)}.legal:after{content:"";position:absolute;width:22%;height:22%;border-radius:50%;background:#2226}
+.capture:after{content:"";position:absolute;inset:8%;border:4px solid #2225;border-radius:50%}
+.check{background:var(--check)!important;animation:flash .65s ease-in-out 2}
+.move{animation:move .38s cubic-bezier(.2,.8,.2,1) 1}
+@keyframes move{0%{opacity:.1;transform:scale(.7) translateY(-12px)}60%{transform:scale(1.08) translateY(2px)}100%{opacity:1;transform:scale(1) translateY(0)}}
+@keyframes flash{50%{filter:brightness(1.35)}}
+.info{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}.thinking{display:inline-flex;gap:4px}.thinking i{width:6px;height:6px;background:currentColor;border-radius:50%;animation:b .7s infinite alternate}.thinking i:nth-child(2){animation-delay:.15s}.thinking i:nth-child(3){animation-delay:.3s}@keyframes b{to{transform:translateY(-4px);opacity:.3}}
+.clock{font-variant-numeric:tabular-nums;font-weight:800}.files{width:min(94vw,600px);margin:5px auto 0;display:grid;grid-template-columns:repeat(8,1fr);text-align:center;color:var(--muted);font-size:12px}
+@media(max-width:480px){.modes{grid-template-columns:repeat(2,1fr)}body{padding:10px}}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="top"><h1>♟ Catur</h1><button id="reset">↻ Reset</button></div>
+
+<div class="panel">
+<b>Mode</b>
+<div class="modes" id="modes">
+<button class="mode active" data-mode="bot">🤖 Vs Bot</button>
+<button class="mode" data-mode="2p">👥 2 Player</button>
+<button class="mode" data-mode="bvb">⚔️ Bot vs Bot</button>
+<button class="mode" data-mode="time">⏱️ Time Mode</button>
+<button class="mode" data-mode="random">🎲 Random Chess</button>
+</div>
+</div>
+
+<div class="panel info">
+<div id="status">Giliran Putih</div><div id="clock" class="clock"></div>
+</div>
+<div id="board" class="board"></div>
+<div class="files"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span></div>
+<div class="panel">
+<div><b>Putih:</b> <span id="whiteLabel">Kamu</span> &nbsp; <b>Hitam:</b> <span id="blackLabel">Bot</span></div>
+<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+<button id="undo">↩ Undo</button>
+<button id="pause">⏸ Pause</button>
+<select id="minutes"><option value="1">1 menit</option><option value="3" selected>3 menit</option><option value="5">5 menit</option><option value="10">10 menit</option></select>
+</div>
+</div>
+</div>
+
+<script>
+(()=> {
+const B=document.querySelector("#board"),S=document.querySelector("#status"),C=document.querySelector("#clock");
+const W=document.querySelector("#whiteLabel"),BL=document.querySelector("#blackLabel"),reset=document.querySelector("#reset");
+const undo=document.querySelector("#undo"),pause=document.querySelector("#pause"),minutes=document.querySelector("#minutes");
+const ICON={K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟"};
+const VAL={p:100,n:320,b:330,r:500,q:900,k:20000};
+let board,turn,rights,ep,selected,moves,history,mode,over,busy,lastMove,animToken=0,paused=false,timers={w:180,b:180},timerID;
+
+const col=p=>p&&(p===p.toUpperCase()?"w":"b"), inside=(r,c)=>r>=0&&r<8&&c>=0&&c<8;
+function startBoard(random=false){
+ board=Array.from({length:8},()=>Array(8).fill(null));
+ if(!random){board[0]=["r","n","b","q","k","b","n","r"];board[1]=Array(8).fill("p");board[6]=Array(8).fill("P");board[7]=["R","N","B","Q","K","B","N","R"];}
+ else{
+  let back=["r","n","b","q","k","b","n","r"];
+  for(let i=back.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[back[i],back[j]]=[back[j],back[i]]}
+  board[0]=back;board[1]=Array(8).fill("p");board[6]=Array(8).fill("P");board[7]=back.map(x=>x.toUpperCase());
+ }
+ turn="w";rights={K:true,Q:true,k:true,q:true};ep=null;selected=null;moves=[];history=[];over=false;busy=false;paused=false;lastMove=null;animToken=0;
+ timers={w:+minutes.value*60,b:+minutes.value*60}; updateLabels();render();
+}
+function snap(){return{board:board.map(r=>r.slice()),turn,rights:{...rights},ep,timers:{...timers}}}
+function restore(s){board=s.board.map(r=>r.slice());turn=s.turn;rights={...s.rights};ep=s.ep;timers={...s.timers};selected=null;moves=[];over=false;busy=false;lastMove=null;render()}
+function attacked(x,r,c,by){
+ for(let R=0;R<8;R++)for(let Cc=0;Cc<8;Cc++){let p=x[R][Cc];if(!p||col(p)!==by)continue;let z=p.toLowerCase(),dr=r-R,dc=c-Cc;
+  if(z==="p"){let d=by==="w"?-1:1;if(dr===d&&Math.abs(dc)===1)return true}
+  else if(z==="n"&&((Math.abs(dr)===2&&Math.abs(dc)===1)||(Math.abs(dr)===1&&Math.abs(dc)===2)))return true;
+  else if(z==="k"&&Math.max(Math.abs(dr),Math.abs(dc))===1)return true;
+  else if("brq".includes(z)){let diag=Math.abs(dr)===Math.abs(dc),straight=dr===0||dc===0;if((z==="b"&&!diag)||(z==="r"&&!straight)||(!diag&&!straight))continue;
+   let sr=Math.sign(dr),sc=Math.sign(dc),rr=R+sr,cc=Cc+sc,ok=true;while(rr!==r||cc!==c){if(x[rr][cc]){ok=false;break}rr+=sr;cc+=sc}if(ok)return true}
+ }return false;
+}
+function check(x,w){for(let r=0;r<8;r++)for(let c=0;c<8;c++)if(x[r][c]===(w==="w"?"K":"k"))return attacked(x,r,c,w==="w"?"b":"w");return true}
+function pseudo(r,c){
+ let p=board[r][c],w=turn,z=p?.toLowerCase(),a=[];if(!p||col(p)!==w)return[];
+ const add=(R,C,o={})=>{if(inside(R,C)&&(!board[R][C]||col(board[R][C])!==w)&&board[R][C]?.toLowerCase()!=="k")a.push({r:R,c:C,...o})};
+ if(z==="p"){let d=w==="w"?-1:1,start=w==="w"?6:1;if(inside(r+d,c)&&!board[r+d][c]){add(r+d,c);if(r===start&&!board[r+2*d][c])add(r+2*d,c)}
+  for(let dc of[-1,1]){let R=r+d,C=c+dc;if(inside(R,C)){if(board[R][C]&&col(board[R][C])!==w&&board[R][C].toLowerCase()!=="k")add(R,C);if(ep&&ep.r===R&&ep.c===C)add(R,C,{ep:true})}}
+ }else if(z==="n"){for(let q of[[2,1],[2,-1],[-2,1],[-2,-1],[1,2],[1,-2],[-1,2],[-1,-2]])add(r+q[0],c+q[1]);
+ }else if(z==="k"){for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++)if(dr||dc)add(r+dr,c+dc);
+  if(!check(board,w)){let e=w==="w"?"b":"w";if((w==="w"?rights.K:rights.k)&&!board[r][5]&&!board[r][6]&&!attacked(board,r,5,e)&&!attacked(board,r,6,e))add(r,6,{castle:"K"});
+   if((w==="w"?rights.Q:rights.q)&&!board[r][1]&&!board[r][2]&&!board[r][3]&&!attacked(board,r,3,e)&&!attacked(board,r,2,e))add(r,2,{castle:"Q"})}
+ }else{let ds=z==="b"?[[1,1],[1,-1],[-1,1],[-1,-1]]:z==="r"?[[1,0],[-1,0],[0,1],[0,-1]]:[[1,1],[1,-1],[-1,1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
+  for(let[dR,dC]of ds){let R=r+dR,C=c+dC;while(inside(R,C)){if(!board[R][C])a.push({r:R,c:C});else{if(col(board[R][C])!==w&&board[R][C].toLowerCase()!=="k")a.push({r:R,c:C});break}R+=dR;C+=dC}}
+ }return a;
+}
+function legal(r,c){let p=board[r][c],out=[];if(!p||col(p)!==turn)return out;for(let m of pseudo(r,c)){let s=snap(),moving=board[r][c];board[m.r][m.c]=moving;board[r][c]=null;if(m.ep)board[r][m.c]=null;if(m.castle){if(m.c===6){board[r][5]=board[r][7];board[r][7]=null}else{board[r][3]=board[r][0];board[r][0]=null}}if(!check(board,turn))out.push(m);restoreSilent(s)}return out}
+function restoreSilent(s){board=s.board.map(r=>r.slice());turn=s.turn;rights={...s.rights};ep=s.ep;timers={...s.timers}}
+function all(w){let old=turn;turn=w;let a=[];for(let r=0;r<8;r++)for(let c=0;c<8;c++)if(board[r][c]&&col(board[r][c])===w)for(let m of legal(r,c))a.push({r,c,m});turn=old;return a}
+function apply(fr,fc,m,promo="Q",record=true){
+ if(record)history.push(snap());let p=board[fr][fc],tar=board[m.r][m.c],w=col(p);
+ board[m.r][m.c]=p;board[fr][fc]=null;if(m.ep)board[fr][m.c]=null;
+ if(m.castle){if(m.c===6){board[fr][5]=board[fr][7];board[fr][7]=null}else{board[fr][3]=board[fr][0];board[fr][0]=null}}
+ if(p.toLowerCase()==="p"&&(m.r===0||m.r===7))board[m.r][m.c]=w==="w"?promo:promo.toLowerCase();
+ if(p==="K")rights.K=rights.Q=false;if(p==="k")rights.k=rights.q=false;
+ if(p==="R"){if(fr===7&&fc===0)rights.Q=false;if(fr===7&&fc===7)rights.K=false}
+ if(p==="r"){if(fr===0&&fc===0)rights.q=false;if(fr===0&&fc===7)rights.k=false}
+ ep=null;if(p.toLowerCase()==="p"&&Math.abs(m.r-fr)===2)ep={r:(m.r+fr)/2,c:fc};
+ turn=w==="w"?"b":"w";
+}
+function evaluate(){let n=0;for(let r=0;r<8;r++)for(let c=0;c<8;c++){let p=board[r][c];if(p)n+=(col(p)==="b"?1:-1)*VAL[p.toLowerCase()]}return n}
+function search(depth,alpha,beta,maximizing){let arr=all(turn);if(!arr.length)return check(board,turn)?(turn==="b"?-999999:999999):0;if(depth===0)return evaluate();let best=maximizing?-Infinity:Infinity;
+ for(let x of arr){let s=snap();apply(x.r,x.c,x.m,"Q",false);let q=search(depth-1,alpha,beta,turn==="b");restoreSilent(s);if(maximizing){best=Math.max(best,q);alpha=Math.max(alpha,best)}else{best=Math.min(best,q);beta=Math.min(beta,best)}if(beta<=alpha)break}return best}
+function botMove(){
+ if(over||paused)return;busy=true;S.innerHTML="🤖 berpikir <span class=thinking><i></i><i></i><i></i></span>";render();
+ setTimeout(()=>{if(over||paused){busy=false;return}let arr=all(turn),best=-Infinity,choices=[];for(let x of arr){let s=snap();apply(x.r,x.c,x.m,"Q",false);let q=search(1,-Infinity,Infinity,false);restoreSilent(s);if(q>best){best=q;choices=[x]}else if(q===best)choices.push(x)}
+  if(choices.length){let x=choices[Math.floor(Math.random()*choices.length)];history.push(snap());apply(x.r,x.c,x.m);lastMove={r:x.m.r,c:x.m.c,token:++animToken};}
+  busy=false;render();playOnce();finishOrContinue();
+ },450);
+}
+function playOnce(){if(!lastMove)return;let lm=lastMove;requestAnimationFrame(()=>{let el=B.children[lm.r*8+lm.c]?.querySelector(".piece");if(el&&lm.token===animToken){el.classList.add("move");setTimeout(()=>el.classList.remove("move"),420)}})}
+function finishOrContinue(){
+ let arr=all(turn);if(!arr.length){over=true;S.textContent=check(board,turn)?`♚ Skakmat — ${turn==="w"?"Hitam":"Putih"} menang!`:"Remis — pat.";return}
+ if(mode==="bvb"&&turn==="b"||mode==="bvb"&&turn==="w"||mode==="bot"&&turn==="b")setTimeout(botMove,280);
+}
+function tap(r,c){
+ if(busy||over||paused)return;
+ if((mode==="bot"&&turn==="b"))return;
+ if(mode==="bvb")return;
+ let p=board[r][c],m=moves.find(x=>x.r===r&&x.c===c);
+ if(selected&&m){let from=selected;let promo="Q";if(board[from.r][from.c].toLowerCase()==="p"&&(r===0||r===7)){promo=(prompt("Promosi: Q, R, B, atau N","Q")||"Q").toUpperCase();if(!"QRBN".includes(promo))promo="Q"}
+  apply(from.r,from.c,m,promo);lastMove={r,c,token:++animToken};selected=null;moves=[];render();playOnce();finishOrContinue();return}
+ if(p&&((mode==="2p")||turn==="w"&&mode!=="bvb")&&col(p)===turn){selected={r,c};moves=legal(r,c)}else{selected=null;moves=[]}render();
+}
+function render(){
+ B.innerHTML="";for(let r=0;r<8;r++)for(let c=0;c<8;c++){let q=document.createElement("button");q.className="sq "+((r+c)%2?"dark":"light");let p=board[r][c];
+  if(p){let sp=document.createElement("span");sp.className="piece "+(col(p)==="w"?"white":"black");sp.textContent=ICON[p];q.appendChild(sp)}
+  if(selected?.r===r&&selected?.c===c)q.classList.add("selected");let lm=moves.find(x=>x.r===r&&x.c===c);if(lm)q.classList.add(p?"capture":"legal");if(p?.toLowerCase()==="k"&&col(p)===turn&&check(board,turn))q.classList.add("check");
+  q.onclick=()=>tap(r,c);B.appendChild(q)}
+ if(!over){let arr=all(turn);S.textContent=check(board,turn)?"⚡ SKAK!":(turn==="w"?"Giliran Putih":"Giliran Hitam");if(mode==="bot")S.textContent=turn==="w"?(check(board,turn)?"⚡ SKAK! Giliran kamu":"Giliran kamu"):(busy?"🤖 Bot berpikir...":"🤖 Bot giliran");if(mode==="bvb")S.textContent=busy?"🤖 Bot berpikir...":`🤖 ${turn==="w"?"Putih":"Hitam"} bergerak`;if(!arr.length){over=true;S.textContent=check(board,turn)?`♚ Skakmat — ${turn==="w"?"Hitam":"Putih"} menang!`:"Remis — pat."}}
+ C.textContent=mode==="time"?`⚪ ${fmt(timers.w)}  |  ⚫ ${fmt(timers.b)}`:"";
+ U.disabled=!history.length||busy;
+}
+function fmt(n){n=Math.max(0,Math.ceil(n));return String(Math.floor(n/60)).padStart(2,"0")+":"+String(n%60).padStart(2,"0")}
+function updateLabels(){W.textContent=mode==="2p"?"Pemain 1":mode==="bvb"?"Bot":"Kamu";BL.textContent=mode==="2p"?"Pemain 2":"Bot"}
+function setMode(m){mode=m;clearInterval(timerID);timerID=null;document.querySelectorAll(".mode").forEach(x=>x.classList.toggle("active",x.dataset.mode===m));updateLabels();startBoard(m==="random");if(m==="time"){timerID=setInterval(()=>{if(paused||over)return;timers[turn]-=.1;if(timers[turn]<=0){timers[turn]=0;over=true;S.textContent=`⏰ Waktu habis — ${turn==="w"?"Hitam":"Putih"} menang!`}render()},100);}}
+document.querySelectorAll(".mode").forEach(x=>x.onclick=()=>setMode(x.dataset.mode));
+reset.onclick=()=>startBoard(mode==="random");
+undo.onclick=()=>{if(history.length&&!busy){restore(history.pop());}};
+pause.onclick=()=>{paused=!paused;pause.textContent=paused?"▶ Lanjut":"⏸ Pause";render()};
+minutes.onchange=()=>{if(mode==="time")startBoard(false)};
+startBoard(false);
+})();
+</script>
+</body>
+</html>
